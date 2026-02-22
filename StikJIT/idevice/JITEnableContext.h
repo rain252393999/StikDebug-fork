@@ -67,6 +67,7 @@ typedef void (^SyslogErrorHandler)(NSError *error);
 - (NSDictionary<NSString*, NSString*>*)getAppListWithError:(NSError**)error;
 - (NSDictionary<NSString*, NSString*>*)getAllAppsWithError:(NSError**)error;
 - (NSDictionary<NSString*, NSString*>*)getHiddenSystemAppsWithError:(NSError**)error;
+- (NSArray<NSDictionary*>*)getSideloadedAppsWithError:(NSError**)error;
 @end
 
 @interface JITEnableContext(Syslog)

@@ -149,6 +149,65 @@ static NSDictionary<NSString*, NSString*> *buildAppDictionary(void *apps,
     return result;
 }
 
+static NSArray<NSDictionary*>* getSideloadedApps(IdeviceProviderHandle *provider,
+                         NSString **error) {
+    InstallationProxyClientHandle *client = NULL;
+    IdeviceFfiError* err = installation_proxy_connect(provider, &client);
+    if (err) {
+        *error = [NSString stringWithFormat:@"Failed to connect to installation proxy: %s", err->message];
+        idevice_error_free(err);
+        return nil;
+    }
+
+    plist_t *apps = NULL;
+    size_t count = 0;
+    err = installation_proxy_get_apps(client, NULL, NULL, 0, (void*)&apps, &count);
+    if (err) {
+        *error = [NSString stringWithFormat:@"Failed to get apps: %s", err->message];
+        idevice_error_free(err);
+        installation_proxy_client_free(client);
+        return nil;
+    }
+    
+    NSMutableArray<NSDictionary*>* result = [NSMutableArray new];
+
+    for (size_t i = 0; i < count; i++) {
+        plist_t app = ((plist_t *)apps)[i];
+        
+        plist_t profileValidatedNode = 0;
+        if(!(profileValidatedNode = plist_dict_get_item(app, "ProfileValidated"))) {
+            continue;
+        }
+        
+        char* bin = 0;
+        uint32_t size = 0;
+        plist_to_bin(app, &bin, &size);
+        if(!bin || size == 0) {
+            continue;
+        }
+        
+        NSData* d = [NSData dataWithBytes:bin length:size];
+        NSError* err;
+        NSDictionary* dict = [NSPropertyListSerialization propertyListWithData:d options:0 format:nil error:&err];
+        plist_mem_free(bin);
+        
+        if(err) {
+            continue;
+        }
+        
+        [result addObject:dict];
+        
+    }
+    
+    installation_proxy_client_free(client);
+    for(int i = 0; i < count; ++i) {
+        plist_free(apps[i]);
+    }
+    idevice_data_free((uint8_t *)apps, sizeof(plist_t)*count);
+    
+    return result;
+}
+
 static NSDictionary<NSString*, NSString*> *performAppQuery(IdeviceProviderHandle *provider,
                                                            BOOL requireGetTaskAllow,
                                                            NSString **error,
@@ -258,6 +317,21 @@ UIImage* getAppIcon(IdeviceProviderHandle* provider, NSString* bundleID, NSStrin
 
     NSString* errorStr = nil;
     NSDictionary<NSString*, NSString*>* apps = list_hidden_system_apps(provider, &errorStr);
+    if (errorStr) {
+        *error = [self errorWithStr:errorStr code:-17];
+        return nil;
+    }
+    return apps;
+}
+
+- (NSArray<NSDictionary*>*)getSideloadedAppsWithError:(NSError**)error {
+    [self ensureHeartbeatWithError:error];
+    if(*error) {
+        return nil;
+    }
+
+    NSString* errorStr = nil;
+    NSArray<NSDictionary*>* apps = getSideloadedApps(provider, &errorStr);
     if (errorStr) {
         *error = [self errorWithStr:errorStr code:-17];
         return nil;

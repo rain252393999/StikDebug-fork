@@ -80,6 +80,8 @@ typedef struct AppServiceHandle AppServiceHandle;
 
 typedef struct CoreDeviceProxyHandle CoreDeviceProxyHandle;
 
+typedef struct CrashReportCopyMobileHandle CrashReportCopyMobileHandle;
+
 /**
  * Opaque handle to a DebugProxyClient
  */
@@ -93,6 +95,8 @@ typedef struct DiagnosticsRelayClientHandle DiagnosticsRelayClientHandle;
 typedef struct DiagnosticsServiceHandle DiagnosticsServiceHandle;
 
 typedef struct HeartbeatClientHandle HeartbeatClientHandle;
+
+typedef struct HouseArrestClientHandle HouseArrestClientHandle;
 
 /**
  * Opaque C-compatible handle to an Idevice connection
@@ -120,6 +124,8 @@ typedef struct LocationSimulationHandle LocationSimulationHandle;
 typedef struct LockdowndClientHandle LockdowndClientHandle;
 
 typedef struct MisagentClientHandle MisagentClientHandle;
+
+typedef struct NotificationProxyClientHandle NotificationProxyClientHandle;
 
 typedef struct OsTraceRelayClientHandle OsTraceRelayClientHandle;
 
@@ -150,6 +156,8 @@ typedef struct RsdHandshakeHandle RsdHandshakeHandle;
  */
 typedef struct ScreenshotClientHandle ScreenshotClientHandle;
 
+typedef struct ScreenshotrClientHandle ScreenshotrClientHandle;
+
 typedef struct SpringBoardServicesClientHandle SpringBoardServicesClientHandle;
 
 typedef struct SysdiagnoseStreamHandle SysdiagnoseStreamHandle;
@@ -174,6 +182,11 @@ typedef struct IdeviceFfiError {
   int32_t code;
   const char *message;
 } IdeviceFfiError;
+
+/**
+ * Stub to avoid header problems
+ */
+typedef void *plist_t;
 
 /**
  * File information structure for C bindings
@@ -265,11 +278,6 @@ typedef struct DebugserverCommandHandle {
   uintptr_t argv_count;
 } DebugserverCommandHandle;
 
-/**
- * Stub to avoid header problems
- */
-typedef void *plist_t;
-
 typedef struct SyslogLabel {
   const char *subsystem;
   const char *category;
@@ -332,6 +340,14 @@ typedef struct CRsdServiceArray {
    */
   size_t count;
 } CRsdServiceArray;
+
+/**
+ * Represents a screenshot data buffer
+ */
+typedef struct ScreenshotData {
+  uint8_t *data;
+  uintptr_t length;
+} ScreenshotData;
 
 /**
  * Creates a new Idevice connection
@@ -447,6 +463,14 @@ struct IdeviceFfiError *idevice_start_session(struct IdeviceHandle *idevice,
 void idevice_free(struct IdeviceHandle *idevice);
 
 /**
+ * Frees a stream handle
+ *
+ * # Safety
+ * Pass a valid handle allocated by this library
+ */
+void idevice_stream_free(struct ReadWriteOpaque *stream_handle);
+
+/**
  * Frees a string allocated by this library
  *
  * # Arguments
@@ -469,6 +493,27 @@ void idevice_string_free(char *string);
  * or NULL (in which case this function does nothing)
  */
 void idevice_data_free(uint8_t *data, uintptr_t len);
+
+/**
+ * Frees an array of plists allocated by this library
+ *
+ * # Safety
+ * `data` must be a pointer to data allocated by this library,
+ * NOT data allocated by libplist.
+ */
+void idevice_plist_array_free(plist_t *plists, uintptr_t len);
+
+/**
+ * Frees a slice of pointers allocated by this library that had an underlying
+ * vec creation.
+ *
+ * The following functions use an underlying vec and are safe to use:
+ * - idevice_usbmuxd_get_devices
+ *
+ * # Safety
+ * Pass a valid pointer passed by the Vec creating functions
+ */
+void idevice_outer_slice_free(void *slice, uintptr_t len);
 
 /**
  * Connects the adapter to a specific port
@@ -591,6 +636,23 @@ struct IdeviceFfiError *adapter_recv(struct AdapterStreamHandle *handle,
  */
 struct IdeviceFfiError *afc_client_connect(struct IdeviceProviderHandle *provider,
                                            struct AfcClientHandle **client);
+
+/**
+ * Connects to the AFC2 service using a TCP provider
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ * * [`client`] - On success, will be set to point to a newly allocated AfcClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *afc2_client_connect(struct IdeviceProviderHandle *provider,
+                                            struct AfcClientHandle **client);
 
 /**
  * Creates a new AfcClient from an existing Idevice connection
@@ -786,12 +848,13 @@ struct IdeviceFfiError *afc_file_open(struct AfcClientHandle *client,
 struct IdeviceFfiError *afc_file_close(struct AfcFileHandle *handle);
 
 /**
- * Reads data from an open file
+ * Reads data from an open file. This advances the cursor of the file.
  *
  * # Arguments
  * * [`handle`] - File handle to read from
  * * [`data`] - Will be set to point to the read data
- * * [`length`] - Will be set to the length of the read data
+ * * [`len`] - Number of bytes to read from the file
+ * * [`bytes_read`] - The number of bytes read from the file
  *
  * # Returns
  * An IdeviceFfiError on error, null on success
@@ -799,7 +862,75 @@ struct IdeviceFfiError *afc_file_close(struct AfcFileHandle *handle);
  * # Safety
  * All pointers must be valid and non-null
  */
-struct IdeviceFfiError *afc_file_read(struct AfcFileHandle *handle, uint8_t **data, size_t *length);
+struct IdeviceFfiError *afc_file_read(struct AfcFileHandle *handle,
+                                      uint8_t **data,
+                                      uintptr_t len,
+                                      size_t *bytes_read);
+
+/**
+ * Reads all data from an open file.
+ *
+ * # Arguments
+ * * [`handle`] - File handle to read from
+ * * [`data`] - Will be set to point to the read data
+ * * [`length`] - The number of bytes read from the file
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * All pointers must be valid and non-null
+ */
+struct IdeviceFfiError *afc_file_read_entire(struct AfcFileHandle *handle,
+                                             uint8_t **data,
+                                             size_t *length);
+
+/**
+ * Moves the read/write cursor in an open file.
+ *
+ * # Arguments
+ * * [`handle`] - File handle whose cursor should be moved
+ * * [`offset`] - Distance to move the cursor, interpreted based on `whence`
+ * * [`whence`] - Origin used for the seek operation:
+ *     * `0` — Seek from the start of the file (`SeekFrom::Start`)
+ *     * `1` — Seek from the current cursor position (`SeekFrom::Current`)
+ *     * `2` — Seek from the end of the file (`SeekFrom::End`)
+ * * [`new_pos`] - Output parameter; will be set to the new absolute cursor position
+ *
+ * # Returns
+ * An [`IdeviceFfiError`] on error, or null on success.
+ *
+ * # Safety
+ * All pointers must be valid and non-null.
+ *
+ * # Notes
+ * * If `whence` is invalid, this function returns `FfiInvalidArg`.
+ * * The AFC protocol may restrict seeking beyond certain bounds; such errors
+ *   are reported through the returned [`IdeviceFfiError`].
+ */
+struct IdeviceFfiError *afc_file_seek(struct AfcFileHandle *handle,
+                                      int64_t offset,
+                                      int whence,
+                                      int64_t *new_pos);
+
+/**
+ * Returns the current read/write cursor position of an open file.
+ *
+ * # Arguments
+ * * [`handle`] - File handle whose cursor should be queried
+ * * [`pos`] - Output parameter; will be set to the current absolute cursor position
+ *
+ * # Returns
+ * An [`IdeviceFfiError`] on error, or null on success.
+ *
+ * # Safety
+ * All pointers must be valid and non-null.
+ *
+ * # Notes
+ * This function is equivalent to performing a seek operation with
+ * `SeekFrom::Current(0)` internally.
+ */
+struct IdeviceFfiError *afc_file_tell(struct AfcFileHandle *handle, int64_t *pos);
 
 /**
  * Writes data to an open file
@@ -1451,6 +1582,148 @@ void core_device_proxy_free(struct CoreDeviceProxyHandle *handle);
  * or NULL (in which case this function does nothing)
  */
 void adapter_free(struct AdapterHandle *handle);
+
+/**
+ * Automatically creates and connects to the crash report copy mobile service,
+ * returning a client handle
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ * * [`client`] - On success, will be set to point to a newly allocated handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *crash_report_client_connect(struct IdeviceProviderHandle *provider,
+                                                    struct CrashReportCopyMobileHandle **client);
+
+/**
+ * Creates a new CrashReportCopyMobile client from an existing Idevice connection
+ *
+ * # Arguments
+ * * [`socket`] - An IdeviceSocket handle
+ * * [`client`] - On success, will be set to point to a newly allocated handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `socket` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *crash_report_client_new(struct IdeviceHandle *socket,
+                                                struct CrashReportCopyMobileHandle **client);
+
+/**
+ * Lists crash report files in the specified directory
+ *
+ * # Arguments
+ * * [`client`] - A valid CrashReportCopyMobile handle
+ * * [`dir_path`] - Optional directory path (NULL for root "/")
+ * * [`entries`] - Will be set to point to an array of C strings
+ * * [`count`] - Will be set to the number of entries
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * All pointers must be valid and non-null
+ * `dir_path` may be NULL (defaults to root)
+ * Caller must free the returned array with `afc_free_directory_entries`
+ */
+struct IdeviceFfiError *crash_report_client_ls(struct CrashReportCopyMobileHandle *client,
+                                               const char *dir_path,
+                                               char ***entries,
+                                               size_t *count);
+
+/**
+ * Downloads a crash report file from the device
+ *
+ * # Arguments
+ * * [`client`] - A valid CrashReportCopyMobile handle
+ * * [`log_name`] - Name of the log file to download (C string)
+ * * [`data`] - Will be set to point to the file contents
+ * * [`length`] - Will be set to the size of the data
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * All pointers must be valid and non-null
+ * `log_name` must be a valid C string
+ * Caller must free the returned data with `idevice_data_free`
+ */
+struct IdeviceFfiError *crash_report_client_pull(struct CrashReportCopyMobileHandle *client,
+                                                 const char *log_name,
+                                                 uint8_t **data,
+                                                 size_t *length);
+
+/**
+ * Removes a crash report file from the device
+ *
+ * # Arguments
+ * * [`client`] - A valid CrashReportCopyMobile handle
+ * * [`log_name`] - Name of the log file to remove (C string)
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `log_name` must be a valid C string
+ */
+struct IdeviceFfiError *crash_report_client_remove(struct CrashReportCopyMobileHandle *client,
+                                                   const char *log_name);
+
+/**
+ * Converts this client to an AFC client for advanced file operations
+ *
+ * # Arguments
+ * * [`client`] - A valid CrashReportCopyMobile handle (will be consumed)
+ * * [`afc_client`] - On success, will be set to an AFC client handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer (will be freed after this call)
+ * `afc_client` must be a valid, non-null pointer where the new AFC client will be stored
+ */
+struct IdeviceFfiError *crash_report_client_to_afc(struct CrashReportCopyMobileHandle *client,
+                                                   struct AfcClientHandle **afc_client);
+
+/**
+ * Triggers a flush of crash logs from system storage
+ *
+ * This connects to the crashreportmover service to move crash logs
+ * into the AFC-accessible directory. Should be called before listing logs.
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ */
+struct IdeviceFfiError *crash_report_flush(struct IdeviceProviderHandle *provider);
+
+/**
+ * Frees a CrashReportCopyMobile client handle
+ *
+ * # Arguments
+ * * [`handle`] - The handle to free
+ *
+ * # Safety
+ * `handle` must be a valid pointer to the handle that was allocated by this library,
+ * or NULL (in which case this function does nothing)
+ */
+void crash_report_client_free(struct CrashReportCopyMobileHandle *handle);
 
 /**
  * Creates a new DebugserverCommand
@@ -2206,6 +2479,92 @@ struct IdeviceFfiError *heartbeat_get_marco(struct HeartbeatClientHandle *client
 void heartbeat_client_free(struct HeartbeatClientHandle *handle);
 
 /**
+ * Connects to the House Arrest service using a TCP provider
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ * * [`client`] - On success, will be set to point to a newly allocated HouseArrestClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *house_arrest_client_connect(struct IdeviceProviderHandle *provider,
+                                                    struct HouseArrestClientHandle **client);
+
+/**
+ * Creates a new HouseArrestClient from an existing Idevice connection
+ *
+ * # Arguments
+ * * [`socket`] - An IdeviceSocket handle
+ * * [`client`] - On success, will be set to point to a newly allocated HouseArrestClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `socket` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *house_arrest_client_new(struct IdeviceHandle *socket,
+                                                struct HouseArrestClientHandle **client);
+
+/**
+ * Vends a container for an app
+ *
+ * # Arguments
+ * * [`client`] - The House Arrest client
+ * * [`bundle_id`] - The bundle ID to vend for
+ * * [`afc_client`] - The new AFC client for the underlying connection
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a allocated by this library
+ * `bundle_id` must be a NULL-terminated string
+ * `afc_client` must be a valid, non-null pointer where the new AFC client will be stored
+ */
+struct IdeviceFfiError *house_arrest_vend_container(struct HouseArrestClientHandle *client,
+                                                    const char *bundle_id,
+                                                    struct AfcClientHandle **afc_client);
+
+/**
+ * Vends documents for an app
+ *
+ * # Arguments
+ * * [`client`] - The House Arrest client
+ * * [`bundle_id`] - The bundle ID to vend for
+ * * [`afc_client`] - The new AFC client for the underlying connection
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a allocated by this library
+ * `bundle_id` must be a NULL-terminated string
+ * `afc_client` must be a valid, non-null pointer where the new AFC client will be stored
+ */
+struct IdeviceFfiError *house_arrest_vend_documents(struct HouseArrestClientHandle *client,
+                                                    const char *bundle_id,
+                                                    struct AfcClientHandle **afc_client);
+
+/**
+ * Frees an HouseArrestClient handle
+ *
+ * # Arguments
+ * * [`handle`] - The handle to free
+ *
+ * # Safety
+ * `handle` must be a valid pointer to the handle that was allocated by this library,
+ * or NULL (in which case this function does nothing)
+ */
+void house_arrest_client_free(struct HouseArrestClientHandle *handle);
+
+/**
  * Automatically creates and connects to Installation Proxy, returning a client handle
  *
  * # Arguments
@@ -2553,6 +2912,43 @@ struct IdeviceFfiError *lockdownd_get_value(struct LockdowndClientHandle *client
                                             const char *key,
                                             const char *domain,
                                             plist_t *out_plist);
+
+/**
+ * Tells the device to enter recovery mode
+ *
+ * # Arguments
+ * * `client` - A valid LockdowndClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ */
+struct IdeviceFfiError *lockdownd_enter_recovery(struct LockdowndClientHandle *client);
+
+/**
+ * Sets a value in lockdownd
+ *
+ * # Arguments
+ * * `client` - A valid LockdowndClient handle
+ * * `key` - The key to set (null-terminated string)
+ * * `value` - The value to set as a plist
+ * * `domain` - The domain to set in (null-terminated string, optional)
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `key` must be a valid null-terminated string
+ * `value` must be a valid plist
+ * `domain` must be a valid null-terminated string or NULL
+ */
+struct IdeviceFfiError *lockdownd_set_value(struct LockdowndClientHandle *client,
+                                            const char *key,
+                                            plist_t value,
+                                            const char *domain);
 
 /**
  * Frees a LockdowndClient handle
@@ -3034,6 +3430,148 @@ struct IdeviceFfiError *image_mounter_mount_personalized_with_callback(struct Im
                                                                        void *context);
 
 /**
+ * Automatically creates and connects to Notification Proxy, returning a client handle
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ * * [`client`] - On success, will be set to point to a newly allocated NotificationProxyClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *notification_proxy_connect(struct IdeviceProviderHandle *provider,
+                                                   struct NotificationProxyClientHandle **client);
+
+/**
+ * Creates a new NotificationProxyClient from an existing Idevice connection
+ *
+ * # Arguments
+ * * [`socket`] - An IdeviceSocket handle
+ * * [`client`] - On success, will be set to point to a newly allocated NotificationProxyClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `socket` must be a valid pointer to a handle allocated by this library. The socket is consumed,
+ * and may not be used again.
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *notification_proxy_new(struct IdeviceHandle *socket,
+                                               struct NotificationProxyClientHandle **client);
+
+/**
+ * Posts a notification to the device
+ *
+ * # Arguments
+ * * `client` - A valid NotificationProxyClient handle
+ * * `name` - C string containing the notification name
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `name` must be a valid null-terminated C string
+ */
+struct IdeviceFfiError *notification_proxy_post(struct NotificationProxyClientHandle *client,
+                                                const char *name);
+
+/**
+ * Observes a specific notification
+ *
+ * # Arguments
+ * * `client` - A valid NotificationProxyClient handle
+ * * `name` - C string containing the notification name to observe
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `name` must be a valid null-terminated C string
+ */
+struct IdeviceFfiError *notification_proxy_observe(struct NotificationProxyClientHandle *client,
+                                                   const char *name);
+
+/**
+ * Observes multiple notifications at once
+ *
+ * # Arguments
+ * * `client` - A valid NotificationProxyClient handle
+ * * `names` - A null-terminated array of C strings containing notification names
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `names` must be a valid pointer to a null-terminated array of null-terminated C strings
+ */
+struct IdeviceFfiError *notification_proxy_observe_multiple(struct NotificationProxyClientHandle *client,
+                                                            const char *const *names);
+
+/**
+ * Receives the next notification from the device
+ *
+ * # Arguments
+ * * `client` - A valid NotificationProxyClient handle
+ * * `name_out` - On success, will be set to a newly allocated C string containing the notification name
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `name_out` must be a valid pointer. The returned string must be freed with `notification_proxy_free_string`
+ */
+struct IdeviceFfiError *notification_proxy_receive(struct NotificationProxyClientHandle *client,
+                                                   char **name_out);
+
+/**
+ * Receives the next notification with a timeout
+ *
+ * # Arguments
+ * * `client` - A valid NotificationProxyClient handle
+ * * `interval` - Timeout in seconds to wait for a notification
+ * * `name_out` - On success, will be set to a newly allocated C string containing the notification name
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `name_out` must be a valid pointer. The returned string must be freed with `notification_proxy_free_string`
+ */
+struct IdeviceFfiError *notification_proxy_receive_with_timeout(struct NotificationProxyClientHandle *client,
+                                                                uint64_t interval,
+                                                                char **name_out);
+
+/**
+ * Frees a string returned by notification_proxy_receive
+ *
+ * # Safety
+ * `s` must be a valid pointer returned from `notification_proxy_receive`
+ */
+void notification_proxy_free_string(char *s);
+
+/**
+ * Frees a handle
+ *
+ * # Arguments
+ * * [`handle`] - The handle to free
+ *
+ * # Safety
+ * `handle` must be a valid pointer to the handle that was allocated by this library,
+ * or NULL (in which case this function does nothing)
+ */
+void notification_proxy_client_free(struct NotificationProxyClientHandle *handle);
+
+/**
  * Connects to the relay with the given provider
  *
  * # Arguments
@@ -3445,6 +3983,65 @@ void rsd_free_services(struct CRsdServiceArray *services);
 void rsd_handshake_free(struct RsdHandshakeHandle *handle);
 
 /**
+ * Connects to screenshotr service using provider
+ *
+ * # Arguments
+ * * [`provider`] - An IdeviceProvider
+ * * [`client`] - On success, will be set to point to a newly allocated ScreenshotrClient handle
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `provider` must be a valid pointer to a handle allocated by this library
+ * `client` must be a valid, non-null pointer to a location where the handle will be stored
+ */
+struct IdeviceFfiError *screenshotr_connect(struct IdeviceProviderHandle *provider,
+                                            struct ScreenshotrClientHandle **client);
+
+/**
+ * Takes a screenshot from the device
+ *
+ * # Arguments
+ * * `client` - A valid ScreenshotrClient handle
+ * * `screenshot` - Pointer to store the screenshot data
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `screenshot` must be a valid pointer to store the screenshot data
+ * The caller is responsible for freeing the screenshot data using screenshotr_screenshot_free
+ */
+struct IdeviceFfiError *screenshotr_take_screenshot(struct ScreenshotrClientHandle *client,
+                                                    struct ScreenshotData *screenshot);
+
+/**
+ * Frees screenshot data
+ *
+ * # Arguments
+ * * `screenshot` - The screenshot data to free
+ *
+ * # Safety
+ * `screenshot` must be a valid ScreenshotData that was allocated by screenshotr_take_screenshot
+ * or NULL (in which case this function does nothing)
+ */
+void screenshotr_screenshot_free(struct ScreenshotData screenshot);
+
+/**
+ * Frees a ScreenshotrClient handle
+ *
+ * # Arguments
+ * * [`handle`] - The handle to free
+ *
+ * # Safety
+ * `handle` must be a valid pointer to the handle that was allocated by this library,
+ * or NULL (in which case this function does nothing)
+ */
+void screenshotr_client_free(struct ScreenshotrClientHandle *handle);
+
+/**
  * Connects to the Springboard service using a provider
  *
  * # Arguments
@@ -3498,6 +4095,78 @@ struct IdeviceFfiError *springboard_services_get_icon(struct SpringBoardServices
                                                       const char *bundle_identifier,
                                                       void **out_result,
                                                       size_t *out_result_len);
+
+/**
+ * Gets the home screen wallpaper preview as PNG image
+ *
+ * # Arguments
+ * * `client` - A valid SpringBoardServicesClient handle
+ * * `out_result` - On success, will be set to point to newly allocated png image
+ * * `out_result_len` - On success, will contain the size of the data in bytes
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `out_result` and `out_result_len` must be valid, non-null pointers
+ */
+struct IdeviceFfiError *springboard_services_get_home_screen_wallpaper_preview(struct SpringBoardServicesClientHandle *client,
+                                                                               void **out_result,
+                                                                               size_t *out_result_len);
+
+/**
+ * Gets the lock screen wallpaper preview as PNG image
+ *
+ * # Arguments
+ * * `client` - A valid SpringBoardServicesClient handle
+ * * `out_result` - On success, will be set to point to newly allocated png image
+ * * `out_result_len` - On success, will contain the size of the data in bytes
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `out_result` and `out_result_len` must be valid, non-null pointers
+ */
+struct IdeviceFfiError *springboard_services_get_lock_screen_wallpaper_preview(struct SpringBoardServicesClientHandle *client,
+                                                                               void **out_result,
+                                                                               size_t *out_result_len);
+
+/**
+ * Gets the current interface orientation of the device
+ *
+ * # Arguments
+ * * `client` - A valid SpringBoardServicesClient handle
+ * * `out_orientation` - On success, will contain the orientation value (0-4)
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `out_orientation` must be a valid, non-null pointer
+ */
+struct IdeviceFfiError *springboard_services_get_interface_orientation(struct SpringBoardServicesClientHandle *client,
+                                                                       uint8_t *out_orientation);
+
+/**
+ * Gets the home screen icon layout metrics
+ *
+ * # Arguments
+ * * `client` - A valid SpringBoardServicesClient handle
+ * * `res` - On success, will point to a plist dictionary node containing the metrics
+ *
+ * # Returns
+ * An IdeviceFfiError on error, null on success
+ *
+ * # Safety
+ * `client` must be a valid pointer to a handle allocated by this library
+ * `res` must be a valid, non-null pointer
+ */
+struct IdeviceFfiError *springboard_services_get_homescreen_icon_metrics(struct SpringBoardServicesClientHandle *client,
+                                                                         plist_t *res);
 
 /**
  * Frees an SpringBoardServicesClient handle
@@ -4079,6 +4748,8 @@ extern "C"
         PLIST_ERR_PARSE        = -3,  /**< parsing of the input format failed */
         PLIST_ERR_NO_MEM       = -4,  /**< not enough memory to handle the operation */
         PLIST_ERR_IO           = -5,  /**< I/O error */
+        PLIST_ERR_CIRCULAR_REF = -6,  /**< circular reference detected */
+        PLIST_ERR_MAX_NESTING  = -7,  /**< maximum nesting depth exceeded */
         PLIST_ERR_UNKNOWN      = -255 /**< an unspecified error occurred */
     } plist_err_t;
 
@@ -4333,6 +5004,12 @@ extern "C"
      */
     PLIST_API void plist_array_next_item(plist_t node, plist_array_iter iter, plist_t *item);
 
+    /**
+     * Free #PLIST_ARRAY iterator.
+     *
+     * @param iter Iterator to free.
+     */
+    PLIST_API void plist_array_free_iter(plist_array_iter iter);
 
     /********************************************
      *                                          *
@@ -4369,6 +5046,13 @@ extern "C"
      *		key/value pairs are left to iterate.
      */
     PLIST_API void plist_dict_next_item(plist_t node, plist_dict_iter iter, char **key, plist_t *val);
+
+    /**
+     * Free #PLIST_DICT iterator.
+     *
+     * @param iter Iterator to free.
+     */
+    PLIST_API void plist_dict_free_iter(plist_dict_iter iter);
 
     /**
      * Get key associated key to an item. Item must be member of a dictionary.

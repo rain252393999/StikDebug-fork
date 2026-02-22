@@ -57,7 +57,7 @@ struct MainTabView: View {
             TabDescriptor(id: "deviceinfo", title: "Device Info", systemImage: "iphone.and.arrow.forward") { AnyView(DeviceInfoView()) }
         ]
         if FeatureFlags.showBetaTabs {
-            tabs.append(TabDescriptor(id: "profiles", title: "Profiles", systemImage: "magazine.fill") { AnyView(ProfileView()) })
+            tabs.append(TabDescriptor(id: "profiles", title: "App Expiry", systemImage: "calendar.badge.clock") { AnyView(ProfileView()) })
             tabs.append(TabDescriptor(id: "processes", title: "Processes", systemImage: "rectangle.stack.person.crop") { AnyView(ProcessInspectorView()) })
             tabs.append(TabDescriptor(id: "devicelibrary", title: "Devices", systemImage: "list.bullet.rectangle") { AnyView(DeviceLibraryView()) })
             if FeatureFlags.isLocationSpoofingEnabled {

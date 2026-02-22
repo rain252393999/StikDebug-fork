@@ -91,9 +91,8 @@ struct SettingsView: View {
             TabOption(id: "scripts", title: "Scripts", detail: "Manage automation scripts", icon: "scroll", isBeta: false)
         ]
         options.append(TabOption(id: "deviceinfo", title: "Device Info", detail: "View detailed device metadata", icon: "iphone.and.arrow.forward", isBeta: false))
-        if FeatureFlags.showBetaTabs {
-            options.append(TabOption(id: "profiles", title: "Profiles", detail: "Install/remove profiles", icon: "magazine", isBeta: true))
-        }
+        options.append(TabOption(id: "profiles", title: "App Expiry", detail: "Check app expiration date, install/remove profiles", icon: "calendar.badge.clock", isBeta: false))
+        
         if FeatureFlags.showBetaTabs {
             options.append(TabOption(id: "processes", title: "Processes", detail: "Inspect running apps", icon: "rectangle.stack.person.crop", isBeta: true))
             options.append(TabOption(id: "devicelibrary", title: "Devices", detail: "Manage external devices", icon: "list.bullet.rectangle", isBeta: true))

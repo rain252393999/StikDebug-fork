@@ -51,7 +51,7 @@ struct HomeView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                     
-                    Text(pairingFileExists ? "Tap "Enable JIT" to get started" : "Pick pairing file to get started")
+                    Text(pairingFileExists ? "Tap \"Enable JIT\" to get started" : "Pick pairing file to get started")
                         .font(.system(.subheadline, design: .rounded))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

@@ -18,6 +18,7 @@ struct ToolsView: View {
 
     private var tools: [ToolItem] {
         [
+            ToolItem(id: "scripts", title: "Scripts", detail: "Manage and run JS scripts", systemImage: "scroll", destination: AnyView(ScriptListView())),
             ToolItem(id: "console", title: "Console", detail: "Live device logs", systemImage: "terminal", destination: AnyView(ConsoleLogsView())),
             ToolItem(id: "deviceinfo", title: "Device Info", detail: "View detailed device metadata", systemImage: "iphone.and.arrow.forward", destination: AnyView(DeviceInfoView())),
             ToolItem(id: "profiles", title: "App Expiry", detail: "Check app expiration dates", systemImage: "calendar.badge.clock", destination: AnyView(ProfileView())),

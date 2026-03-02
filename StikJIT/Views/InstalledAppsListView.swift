@@ -40,6 +40,8 @@ struct InstalledAppsListView: View {
 
     @Environment(\.dismiss) private var dismiss
     var onSelectApp: (String) -> Void
+    var showDoneButton: Bool = true
+    var onImportPairingFile: (() -> Void)? = nil
 
 
     private var currentSearchBinding: Binding<String> {
@@ -164,7 +166,7 @@ private enum AppListTab: Int, CaseIterable, Identifiable {
             tabContent(for: selectedTab)
                 .transition(.opacity)
                 .transaction { t in t.disablesAnimations = true }
-                .navigationTitle("Installed Apps".localized)
+                .navigationTitle(selectedTab == .debuggable ? "Enable JIT".localized : "Launch Apps".localized)
                 .searchable(
                     text: currentSearchBinding,
                     placement: .navigationBarDrawer(displayMode: .always),
@@ -182,8 +184,17 @@ private enum AppListTab: Int, CaseIterable, Identifiable {
                         .pickerStyle(.segmented)
                         .frame(width: 220)
                     }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { dismiss() }.fontWeight(.semibold)
+                    if let onImportPairingFile {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: onImportPairingFile) {
+                                Image(systemName: "doc.badge.plus")
+                            }
+                        }
+                    }
+                    if showDoneButton {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") { dismiss() }.fontWeight(.semibold)
+                        }
                     }
                 }
                 .onAppear {
@@ -305,7 +316,7 @@ private enum AppListTab: Int, CaseIterable, Identifiable {
                             }
                         }
                     }
-                    Section("All Applications".localized) {
+                    Section("Apps with get-task-allow".localized) {
                         ForEach(filteredDebuggableApps, id: \.key) { bundleID, appName in
                             AppButton(
                                 bundleID: bundleID, appName: appName,
@@ -342,7 +353,7 @@ private enum AppListTab: Int, CaseIterable, Identifiable {
                         .listRowBackground(Color.clear)
                     }
                 } else {
-                    Section("Other Apps".localized) {
+                    Section("All Apps".localized) {
                         ForEach(filteredLaunchApps, id: \.key) { bundleID, appName in
                             let isPinned = pinnedSystemApps.contains(bundleID)
                             LaunchAppRow(

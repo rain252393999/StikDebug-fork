@@ -15,6 +15,19 @@ extension CLLocationCoordinate2D: Equatable {
     }
 }
 
+// MARK: - Bookmark Model
+
+struct LocationBookmark: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var latitude: Double
+    var longitude: Double
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
 // MARK: - Search Completer
 
 @MainActor
@@ -60,6 +73,12 @@ struct LocationSimulationView: View {
 
     @State private var searchText = ""
     @StateObject private var searchCompleter = LocationSearchCompleter()
+
+    // Bookmarks
+    @State private var bookmarks: [LocationBookmark] = []
+    @State private var showBookmarks = false
+    @State private var showSaveBookmark = false
+    @State private var newBookmarkName = ""
 
     private var pairingFilePath: String {
         URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path()
@@ -166,6 +185,14 @@ struct LocationSimulationView: View {
                             Button("Simulate Location", action: simulate)
                                 .buttonStyle(.borderedProminent)
                                 .disabled(!pairingExists || isBusy)
+
+                            Button {
+                                showSaveBookmark = true
+                            } label: {
+                                Image(systemName: "bookmark")
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
                         }
                     } else {
                         Text("Tap map to drop pin")
@@ -179,6 +206,13 @@ struct LocationSimulationView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showBookmarks = true
+                } label: {
+                    Image(systemName: "bookmark.fill")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 TextField("Search location...", text: $searchText)
                     .padding(.leading, 6)
@@ -193,6 +227,25 @@ struct LocationSimulationView: View {
         } message: {
             Text(alertMessage)
         }
+        .alert("Save Bookmark", isPresented: $showSaveBookmark) {
+            TextField("Name", text: $newBookmarkName)
+            Button("Save") { addBookmark() }
+            Button("Cancel", role: .cancel) { newBookmarkName = "" }
+        } message: {
+            Text("Enter a name for this location.")
+        }
+        .sheet(isPresented: $showBookmarks) {
+            BookmarksView(bookmarks: $bookmarks) { bookmark in
+                coordinate = bookmark.coordinate
+                showBookmarks = false
+            } onDelete: { offsets in
+                bookmarks.remove(atOffsets: offsets)
+                saveBookmarks()
+            }
+        }
+        .onAppear {
+            loadBookmarks()
+        }
         .onDisappear {
             stopResendLoop()
             if backgroundTaskID != .invalid {
@@ -201,6 +254,35 @@ struct LocationSimulationView: View {
             endBackgroundTask()
         }
     }
+
+    // MARK: - Bookmarks
+
+    private func loadBookmarks() {
+        guard let data = UserDefaults.standard.data(forKey: "locationBookmarks"),
+              let decoded = try? JSONDecoder().decode([LocationBookmark].self, from: data) else { return }
+        bookmarks = decoded
+    }
+
+    private func saveBookmarks() {
+        if let data = try? JSONEncoder().encode(bookmarks) {
+            UserDefaults.standard.set(data, forKey: "locationBookmarks")
+        }
+    }
+
+    private func addBookmark() {
+        guard let coord = coordinate else { return }
+        let name = newBookmarkName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bookmark = LocationBookmark(
+            name: name.isEmpty ? String(format: "%.4f, %.4f", coord.latitude, coord.longitude) : name,
+            latitude: coord.latitude,
+            longitude: coord.longitude
+        )
+        bookmarks.append(bookmark)
+        saveBookmarks()
+        newBookmarkName = ""
+    }
+
+    // MARK: - Location
 
     private func selectSearchResult(_ result: MKLocalSearchCompletion) {
         searchText = ""
@@ -287,5 +369,51 @@ struct LocationSimulationView: View {
     private func stopResendLoop() {
         resendTimer?.invalidate()
         resendTimer = nil
+    }
+}
+
+// MARK: - Bookmarks Sheet
+
+struct BookmarksView: View {
+    @Binding var bookmarks: [LocationBookmark]
+    let onSelect: (LocationBookmark) -> Void
+    let onDelete: (IndexSet) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if bookmarks.isEmpty {
+                    ContentUnavailableView(
+                        "No Bookmarks",
+                        systemImage: "bookmark.slash",
+                        description: Text("Drop a pin on the map and tap the bookmark icon to save a location.")
+                    )
+                } else {
+                    List {
+                        ForEach(bookmarks) { bookmark in
+                            Button {
+                                onSelect(bookmark)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(bookmark.name)
+                                        .foregroundStyle(.primary)
+                                    Text(String(format: "%.6f, %.6f", bookmark.latitude, bookmark.longitude))
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .onDelete(perform: onDelete)
+                    }
+                }
+            }
+            .navigationTitle("Bookmarks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if !bookmarks.isEmpty {
+                    EditButton()
+                }
+            }
+        }
     }
 }

@@ -27,7 +27,7 @@ struct MainTabView: View {
 
     private var configurableTabs: [TabDescriptor] {
         var tabs: [TabDescriptor] = [
-            TabDescriptor(id: "home", title: "Home", systemImage: "house") { AnyView(HomeView()) },
+            TabDescriptor(id: "home", title: "Apps", systemImage: "square.grid.2x2") { AnyView(HomeView()) },
             TabDescriptor(id: "scripts", title: "Scripts", systemImage: "scroll") { AnyView(ScriptListView()) },
             TabDescriptor(id: "tools", title: "Tools", systemImage: "wrench.and.screwdriver") { AnyView(ToolsView()) },
             TabDescriptor(id: "deviceinfo", title: "Device Info", systemImage: "iphone.and.arrow.forward") { AnyView(DeviceInfoView()) },
@@ -62,10 +62,10 @@ struct MainTabView: View {
     }
     
     private var displayTabs: [TabDescriptor] {
-        var tabs = ["home", "scripts", "tools"].compactMap { id in
+        var tabs = ["home", "tools"].compactMap { id in
             configurableTabs.first(where: { $0.id == id })
         }
-        tabs.insert(settingsTab, at: min(3, tabs.count))
+        tabs.insert(settingsTab, at: min(2, tabs.count))
         return tabs
     }
     

@@ -14,24 +14,30 @@ jobs:
     env:
       UPLOAD_IPA: ${{ vars.UPLOAD_IPA || 'true' }}
     steps:
-      - name: 1. Fetch Source Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 2. Use Xcode 26.0.1
+      - name: Use Xcode 26.0.1
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.0.1'
 
-      - name: 3. Create Export Options
+      # 🔥 修复核心：生成 Xcode 官方标准 XML 格式 plist
+      - name: Create ExportOptions.plist
         run: |
-          cat > exportOptions.plist << EOF
-          {
-            "method" : "developer-id",
-            "signingStyle" : "none"
-          }
+          cat > ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>signingStyle</key>
+              <string>none</string>
+          </dict>
+          </plist>
           EOF
 
-      - name: 4. Build Archive
+      - name: Build Archive
         run: |
           xcodebuild clean archive \
             -project StikDebug.xcodeproj \
@@ -46,14 +52,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=17.4
 
-      - name: 5. Export IPA (FIXED)
+      - name: Export IPA
         run: |
           xcodebuild -exportArchive \
             -archivePath build/StikDebug.xcarchive \
             -exportPath . \
-            -exportOptionsPlist exportOptions.plist
+            -exportOptionsPlist ExportOptions.plist
 
-      - name: 6. Upload IPA
+      - name: Upload IPA
         if: env.UPLOAD_IPA == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -61,13 +67,13 @@ jobs:
           path: "*.ipa"
           retention-days: 90
 
-      - name: 7. Get Version
+      - name: Get App Version
         id: version
         run: |
           VERSION=$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' StikDebug.xcodeproj/project.pbxproj | head -1 | xargs)
           echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: 8. Release
+      - name: Publish Nightly Release
         if: env.UPLOAD_IPA == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:

@@ -21,7 +21,7 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      # 🔥 修复核心：生成 Xcode 官方标准 XML 格式 plist
+      # 🔥 核心修复：无签名 + 不检查团队 + 适配Xcode26
       - name: Create ExportOptions.plist
         run: |
           cat > ExportOptions.plist << 'EOF'
@@ -30,9 +30,11 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>method</key>
-              <string>development</string>
+              <string>debugging</string>
               <key>signingStyle</key>
               <string>none</string>
+              <key>teamID</key>
+              <string></string>
           </dict>
           </plist>
           EOF
@@ -57,7 +59,8 @@ jobs:
           xcodebuild -exportArchive \
             -archivePath build/StikDebug.xcarchive \
             -exportPath . \
-            -exportOptionsPlist ExportOptions.plist
+            -exportOptionsPlist ExportOptions.plist \
+            ALLOW_TEAM_SELECTION=NO
 
       - name: Upload IPA
         if: env.UPLOAD_IPA == 'true'

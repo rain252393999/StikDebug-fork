@@ -8,6 +8,29 @@
 import SwiftUI
 import MapKit
 import UIKit
+import SwiftUI
+import MapKit
+import UIKit
+
+// 👇 新增：自定义出行方式枚举（修复编译报错，核心！）
+private enum TransportType: Int, CaseIterable, Identifiable {
+    case drive, cycle, walk
+    var id: Self { self }
+    var name: String {
+        switch self {
+        case .drive: return "驾车"
+        case .cycle: return "骑行"
+        case .walk: return "步行"
+        }
+    }
+    var mkType: MKDirectionsTransportType {
+        switch self {
+        case .drive: return .automobile
+        case .cycle: return .cycling
+        case .walk: return .walking
+        }
+    }
+}
 
 private struct CoordinateSnapshot: Equatable {
     let latitude: Double
@@ -465,9 +488,9 @@ struct LocationSimulationView: View {
     @State private var newBookmarkName = ""
 
 
-    @State private var selectedTransportType: MKDirectionsTransportType = .cycling
+    @State private var selectedTransport: TransportType = .cycle
     @State private var useAutoSpeed = true
-    @State private var manualSpeedKmh: Double = 9.0 
+    @State private var manualSpeedKmh: Double = 3.6 // km/h 
 
     private var pairingFilePath: String {
         PairingFileStore.prepareURL().path()
@@ -643,19 +666,19 @@ struct LocationSimulationView: View {
                 if !searchCompleter.results.isEmpty {
                     searchResultsList
                 }
-            // 👇 新增：出行方式 + 速度控制面板（仅路线模式显示）
+                // 👇 新增：无报错控制面板
                 if hasRouteContext {
                     VStack(spacing: 8) {
                         // 出行方式切换
-                        Picker("出行方式", selection: $selectedTransportType) {
-                            Text("驾车").tag(MKDirectionsTransportType.automobile)
-                            Text("骑行").tag(MKDirectionsTransportType.cycling)
-                            Text("步行").tag(MKDirectionsTransportType.walking)
+                        Picker("出行方式", selection: $selectedTransport) {
+                            ForEach(TransportType.allCases) { type in
+                                Text(type.name).tag(type)
+                            }
                         }
                         .pickerStyle(.segmented)
                         .disabled(isRouteRunning)
                         
-                        // 速度模式：自动 / 手动(km/h)
+                        // 速度模式
                         HStack {
                             Toggle("自动限速", isOn: $useAutoSpeed)
                                 .font(.caption)
@@ -1036,7 +1059,7 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType =  selectedTransportType
+        request.transportType =  selectedTransport.mkType
 
         routeLoadTask = Task {
             do {

@@ -21,24 +21,6 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      # 🔥 核心修复：无签名 + 不检查团队 + 适配Xcode26
-      - name: Create ExportOptions.plist
-        run: |
-          cat > ExportOptions.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>debugging</string>
-              <key>signingStyle</key>
-              <string>none</string>
-              <key>teamID</key>
-              <string></string>
-          </dict>
-          </plist>
-          EOF
-
       - name: Build Archive
         run: |
           xcodebuild clean archive \
@@ -54,13 +36,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=17.4
 
-      - name: Export IPA
+      # 🔥 核心：TrollStore专用打包（彻底绕开teamID/签名/导出错误）
+      - name: Build IPA (No Sign, TrollStore Ready)
         run: |
-          xcodebuild -exportArchive \
-            -archivePath build/StikDebug.xcarchive \
-            -exportPath . \
-            -exportOptionsPlist ExportOptions.plist \
-            ALLOW_TEAM_SELECTION=NO
+          mkdir -p Payload
+          cp -R build/StikDebug.xcarchive/Products/Applications/*.app Payload/
+          zip -r StikDebug.ipa Payload/
+          rm -rf Payload
 
       - name: Upload IPA
         if: env.UPLOAD_IPA == 'true'

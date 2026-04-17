@@ -62,7 +62,7 @@ jobs:
         if: env.UPLOAD_IPA == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Nightly
+          tag_name: cn-1
           name: "Nightly Build - v${{ steps.version.outputs.app_version }}"
           prerelease: true
           body: "Built from commit ${{ github.sha }}"

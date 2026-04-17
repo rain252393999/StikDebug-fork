@@ -1165,10 +1165,16 @@ private struct RouteSearchSheet: View {
     init(
         initialStart: RouteSearchSelection?,
         initialEnd: RouteSearchSelection?,
+        transportBinding: Binding<Int>,
+        autoSpeedBinding: Binding<Bool>,
+        speedBinding: Binding<Double>,
         onApply: @escaping (RouteSearchSelection, RouteSearchSelection) -> Void
     ) {
         self.initialStart = initialStart
         self.initialEnd = initialEnd
+        self.transportBinding = transportBinding
+        self.autoSpeedBinding = autoSpeedBinding
+        self.speedBinding = speedBinding
         self.onApply = onApply
         _startQuery = State(initialValue: initialStart?.title ?? "")
         _endQuery = State(initialValue: initialEnd?.title ?? "")

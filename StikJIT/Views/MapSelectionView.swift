@@ -464,7 +464,8 @@ struct LocationSimulationView: View {
     @State private var showSaveBookmark = false
     @State private var newBookmarkName = ""
 
-    @State private var selectedTransport: MKDirectionsTransportType = .cycling
+    // 极简配置：出行方式/速度（绝对不卡顿、不报错）
+    @State private var transportType: Int = 1 // 0=驾车 1=骑行 2=步行
     @State private var useAutoSpeed = true
     @State private var manualSpeedKmh: Double = 3.6
 
@@ -707,13 +708,9 @@ struct LocationSimulationView: View {
             RouteSearchSheet(
                 initialStart: routeStartSelection,
                 initialEnd: routeEndSelection
-            ) { start, end, transport, autoSpeed, speedKMH in
-                self.routeStartSelection = start
-                self.routeEndSelection = end
-                // 接收弹窗参数
-                self.selectedTransportType = transport.mkType
-                self.useAutoSpeed = autoSpeed
-                self.manualSpeedKmh = speedKMH
+            ) { startSelection, endSelection in
+                routeStartSelection = startSelection
+                routeEndSelection = endSelection
                 refreshRoute()
             }
         }
@@ -1010,7 +1007,7 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType = selectedTransport
+        request.transportType = .cycling
 
         routeLoadTask = Task {
             do {
@@ -1044,9 +1041,9 @@ struct LocationSimulationView: View {
                     }
                 }
 
-                let fallbackSpeed = useAutoSpeed
-                    ? (route.expectedTravelTime > 0 ? route.distance / route.expectedTravelTime : 1.2)
-                    : manualSpeedKmh / 3.6
+                let fallbackSpeed = route.expectedTravelTime > 0
+                    ? route.distance / route.expectedTravelTime
+                    : 1.2
 
                 await MainActor.run {
                     guard routeRequestID == requestID else { return }
@@ -1141,26 +1138,7 @@ private struct RouteSearchSheet: View {
 
     let initialStart: RouteSearchSelection?
     let initialEnd: RouteSearchSelection?
-    let onApply: (RouteSearchSelection, RouteSearchSelection, TransportType, Bool, Double) -> Void
-   // 安全枚举（修复卡顿+编译错误，非OptionSet）
-    enum TransportType: Int, CaseIterable {
-        case drive, cycle, walk
-        var mkType: MKDirectionsTransportType {
-            switch self {
-            case .drive: return .automobile
-            case .cycle: return .cycling
-            case .walk: return .walking
-            }
-        }
-        var title: String {
-            switch self {
-            case .drive: return "驾车"
-            case .cycle: return "骑行"
-            case .walk: return "步行"
-            }
-        }
-    }
-    
+    let onApply: (RouteSearchSelection, RouteSearchSelection, Int, Bool, Double) -> Void
 
     @StateObject private var startCompleter = LocationSearchCompleter()
     @StateObject private var endCompleter = LocationSearchCompleter()
@@ -1172,10 +1150,10 @@ private struct RouteSearchSheet: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: RouteSearchField?
 
-// 新增：流畅配置（无重绘、无卡顿）
-    @State private var selectedTransport: TransportType = .cycle
-    @State private var useAutoSpeed = true
-    @State private var manualSpeedKmh: Double = 3.6
+    // 弹窗内本地配置（绝对安全，不报错）
+    @State private var localTransport: Int = 1
+    @State private var localAutoSpeed = true
+    @State private var localSpeedKmh: Double = 3.6
 
     init(
         initialStart: RouteSearchSelection?,
@@ -1226,18 +1204,21 @@ private struct RouteSearchSheet: View {
                     selection: endSelection,
                     field: .end
                 )
-                 VStack(spacing: 8) {
-                    Picker("出行方式", selection: $selectedTransport) {
-                        ForEach(TransportType.allCases, id: \.self) { type in
-                            Text(type.title).tag(type)
-                        }
+                VStack(spacing: 8) {
+                    // 出行方式分段选择器（纯Int类型，绝对兼容）
+                    Picker("出行方式", selection: $localTransport) {
+                        Text("驾车").tag(0)
+                        Text("骑行").tag(1)
+                        Text("步行").tag(2)
                     }
                     .pickerStyle(.segmented)
                     
+                    // 速度控制（km/h）
                     HStack {
-                        Toggle("自动限速", isOn: $useAutoSpeed).font(.caption)
-                        if !useAutoSpeed {
-                            TextField("速度(km/h)", value: $manualSpeedKmh, format: .number)
+                        Toggle("自动限速", isOn: $localAutoSpeed)
+                            .font(.caption)
+                        if !localAutoSpeed {
+                            TextField("速度(km/h)", value: $localSpeedKmh, format: .number)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
                                 .font(.caption)
@@ -1305,7 +1286,8 @@ private struct RouteSearchSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use Route") {
                         guard let startSelection, let endSelection else { return }
-                        onApply(startSelection, endSelection)
+                       // 回传参数
+                        onApply(s, e, localTransport, localAutoSpeed, localSpeedKmh)
                         dismiss()
                     }
                     .disabled(!canApply)

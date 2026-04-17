@@ -87,6 +87,46 @@ private extension MKPolyline {
     }
 }
 
+// MARK: - GCJ02(火星坐标) ↔ WGS84(地球坐标) 纠偏（中国区域自动转换）
+private let EARTH_RADIUS: Double = 6378245.0
+private let EE: Double = 0.00669342370523
+private func isInChina(_ lat: Double, _ lon: Double) -> Bool {
+    // 中国国境经纬度范围（自动判断是否需要纠偏）
+    return (lon >= 73.55 && lon <= 135.05 && lat >= 3.86 && lat <= 53.55)
+}
+private func transformLat(_ x: Double, _ y: Double) -> Double {
+    var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * sqrt(fabs(x))
+    ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
+    ret += (20.0 * sin(y * .pi) + 40.0 * sin(y / 3.0 * .pi)) * 2.0 / 3.0
+    ret += (160.0 * sin(y / 12.0 * .pi) + 320.0 * sin(y / 30.0 * .pi)) * 2.0 / 3.0
+    return ret
+}
+private func transformLon(_ x: Double, _ y: Double) -> Double {
+    var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * sqrt(fabs(x))
+    ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
+    ret += (20.0 * sin(x * .pi) + 40.0 * sin(x / 3.0 * .pi)) * 2.0 / 3.0
+    ret += (150.0 * sin(x / 12.0 * .pi) + 300.0 * sin(x / 30.0 * .pi)) * 2.0 / 3.0
+    return ret
+}
+// GCJ02 → WGS84（核心纠偏）
+private func gcj02ToWgs84(_ lat: Double, _ lon: Double) -> (lat: Double, lon: Double) {
+    guard isInChina(lat, lon) else { return (lat, lon) } // 国外直接返回
+    var dLat = transformLat(lon - 105.0, lat - 35.0)
+    var dLon = transformLon(lon - 105.0, lat - 35.0)
+    let radLat = lat / 180.0 * .pi
+    var magic = sin(radLat)
+    magic = 1 - EE * magic * magic
+    let sqrtMagic = sqrt(magic)
+    dLat = (dLat * 180.0) / ((EARTH_RADIUS * (1 - EE)) / (magic * sqrtMagic) * .pi)
+    dLon = (dLon * 180.0) / (EARTH_RADIUS / sqrtMagic * cos(radLat) * .pi)
+    return (lat - dLat, lon - dLon)
+}
+// 便捷调用：CLLocationCoordinate2D 纠偏
+private func correctedCoordinate(_ coord: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+    let converted = gcj02ToWgs84(coord.latitude, coord.longitude)
+    return CLLocationCoordinate2D(latitude: converted.lat, longitude: converted.lon)
+}
+
 private func interpolateCoordinate(
     from start: CLLocationCoordinate2D,
     to end: CLLocationCoordinate2D,
@@ -922,7 +962,7 @@ struct LocationSimulationView: View {
         if hasRouteContext {
             resetRouteSelection()
         }
-        self.coordinate = coordinate
+        self.coordinate =  correctedCoordinate(coordinate)
     }
 
     private func resetRouteSelection() {
@@ -962,7 +1002,7 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType = .automobile
+        request.transportType = .cycling
 
         routeLoadTask = Task {
             do {
@@ -998,7 +1038,7 @@ struct LocationSimulationView: View {
 
                 let fallbackSpeed = route.expectedTravelTime > 0
                     ? route.distance / route.expectedTravelTime
-                    : 13.4
+                    : 1.2
 
                 await MainActor.run {
                     guard routeRequestID == requestID else { return }

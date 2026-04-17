@@ -464,6 +464,11 @@ struct LocationSimulationView: View {
     @State private var showSaveBookmark = false
     @State private var newBookmarkName = ""
 
+
+    @State private var selectedTransportType: MKDirectionsTransportType = .cycling
+    @State private var useAutoSpeed = true
+    @State private var manualSpeedKmh: Double = 9.0 
+
     private var pairingFilePath: String {
         PairingFileStore.prepareURL().path()
     }
@@ -637,6 +642,35 @@ struct LocationSimulationView: View {
             VStack(spacing: 0) {
                 if !searchCompleter.results.isEmpty {
                     searchResultsList
+                }
+            // 👇 新增：出行方式 + 速度控制面板（仅路线模式显示）
+                if hasRouteContext {
+                    VStack(spacing: 8) {
+                        // 出行方式切换
+                        Picker("出行方式", selection: $selectedTransportType) {
+                            Text("驾车").tag(MKDirectionsTransportType.automobile)
+                            Text("骑行").tag(MKDirectionsTransportType.cycling)
+                            Text("步行").tag(MKDirectionsTransportType.walking)
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(isRouteRunning)
+                        
+                        // 速度模式：自动 / 手动(km/h)
+                        HStack {
+                            Toggle("自动限速", isOn: $useAutoSpeed)
+                                .font(.caption)
+                                .disabled(isRouteRunning)
+                            
+                            if !useAutoSpeed {
+                                TextField("速度(km/h)", value: $manualSpeedKmh, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
                 }
 
                 Spacer()
@@ -1002,7 +1036,7 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType = .cycling
+        request.transportType =  selectedTransportType
 
         routeLoadTask = Task {
             do {
@@ -1036,9 +1070,9 @@ struct LocationSimulationView: View {
                     }
                 }
 
-                let fallbackSpeed = route.expectedTravelTime > 0
-                    ? route.distance / route.expectedTravelTime
-                    : 1.2
+                let fallbackSpeed = useAutoSpeed 
+                    ? (route.expectedTravelTime > 0 ? route.distance / route.expectedTravelTime : 1.2) 
+                    : manualSpeedKmh / 3.6
 
                 await MainActor.run {
                     guard routeRequestID == requestID else { return }

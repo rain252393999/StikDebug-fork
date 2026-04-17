@@ -2,6 +2,8 @@ name: Build Debug IPA
 on:
   push:
     branches: [ "main", "semi-rewrite" ]
+  pull_request:
+    branches: [ "main", "semi-rewrite" ]
   workflow_dispatch:
 permissions:
   contents: write  
@@ -9,6 +11,8 @@ jobs:
   build_and_release:
     name: Build & Release IPA
     runs-on: macos-latest  
+    env:
+      UPLOAD_IPA: ${{ vars.UPLOAD_IPA || 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,7 +21,7 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      - name: Build App
+      - name: Build Archive
         run: |
           xcodebuild clean archive \
             -project StikDebug.xcodeproj \
@@ -32,8 +36,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=17.4
 
-      # 无签名打包，TrollStore直接安装
-      - name: Create IPA
+      # 🔥 核心：TrollStore专用打包（彻底绕开teamID/签名/导出错误）
+      - name: Build IPA (No Sign, TrollStore Ready)
         run: |
           mkdir -p Payload
           cp -R build/StikDebug.xcarchive/Products/Applications/*.app Payload/
@@ -41,16 +45,27 @@ jobs:
           rm -rf Payload
 
       - name: Upload IPA
-        uses: upload-artifact@v4
+        if: env.UPLOAD_IPA == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          name: StikDebug.ipa
+          name: StikDebug-Debug.ipa
           path: "*.ipa"
+          retention-days: 90
 
-      - name: Publish to Nightly
+      - name: Get App Version
+        id: version
+        run: |
+          VERSION=$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' StikDebug.xcodeproj/project.pbxproj | head -1 | xargs)
+          echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Nightly Release
+        if: env.UPLOAD_IPA == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: CN-1
-          name: "Nightly Build"
+          tag_name: cn-1
+          name: "Nightly Build - v${{ steps.version.outputs.app_version }}"
+          prerelease: true
+          body: "Built from commit ${{ github.sha }}"
           files: "*.ipa"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

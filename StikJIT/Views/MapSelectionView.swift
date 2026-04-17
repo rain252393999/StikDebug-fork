@@ -962,7 +962,7 @@ struct LocationSimulationView: View {
         if hasRouteContext {
             resetRouteSelection()
         }
-        self.coordinate =  correctedCoordinate(coordinate)
+        self.coordinate =  coordinate
     }
 
     private func resetRouteSelection() {
@@ -1123,7 +1123,8 @@ struct LocationSimulationView: View {
     }
 
     private func locationUpdateCode(for coordinate: CLLocationCoordinate2D) -> Int32 {
-        simulate_location(deviceIP, coordinate.latitude, coordinate.longitude, pairingFilePath)
+        let correctedCoord = correctedCoordinate(coordinate)
+        return simulate_location(deviceIP, correctedCoord.latitude, correctedCoord.longitude, pairingFilePath)
     }
 }
 

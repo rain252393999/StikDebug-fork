@@ -1217,25 +1217,7 @@ private struct RouteSearchSheet: View {
                     selection: endSelection,
                     field: .end
                 )
-                VStack(spacing: 8) {
-                    Picker("Mode", selection: transportBinding) {
-                        Text("驾车").tag(0)
-                        Text("骑行").tag(1)
-                        Text("步行").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    HStack {
-                        Toggle("Auto Speed", isOn: autoSpeedBinding)
-                            .font(.caption)
-                        if !autoSpeedBinding.wrappedValue {
-                            TextField("km/h", value: speedBinding, format: .number)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 70)
-                                .font(.caption)
-                        }
-                    }
-                }
+               
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
@@ -1282,7 +1264,28 @@ private struct RouteSearchSheet: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 0)
+                Spacer(minLength: 20)
+                VStack(spacing: 8) {
+                        Picker("Mode", selection: transportBinding) {
+                            Text("驾车").tag(0)
+                            Text("骑行").tag(1)
+                            Text("步行").tag(2)
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        HStack {
+                            Toggle("Auto Speed", isOn: autoSpeedBinding)
+                                .font(.caption)
+                            if !autoSpeedBinding.wrappedValue {
+                                TextField("km/h", value: speedBinding, format: .number)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 70)
+                                    .font(.caption)
+                            }
+                        }
+                }  
+                Spacer(minLength: 0)    
+                
             }
             .padding(16)
             .navigationTitle("Simulate Route")

@@ -1162,6 +1162,8 @@ private struct RouteSearchSheet: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: RouteSearchField?
 
+    @State private var keyboardHeight: CGFloat = 0
+
     init(
         initialStart: RouteSearchSelection?,
         initialEnd: RouteSearchSelection?,
@@ -1288,6 +1290,7 @@ private struct RouteSearchSheet: View {
 
             }
             .padding(16)
+            .padding(.bottom, keyboardHeight)
             .navigationTitle("Simulate Route")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1314,6 +1317,18 @@ private struct RouteSearchSheet: View {
             } else if endSelection == nil {
                 focusedField = .end
             }
+             NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { notification in
+                guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                keyboardHeight = keyboardFrame.height
+            }
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { _ in
+                keyboardHeight = 0
+            }
+            
+        }
+        .onDisappear {
+            // ✅ 新增：移除订阅，防止内存泄漏
+            NotificationCenter.default.removeObserver(self)
         }
     }
 

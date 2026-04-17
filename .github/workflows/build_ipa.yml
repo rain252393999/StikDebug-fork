@@ -2,8 +2,6 @@ name: Build Debug IPA
 on:
   push:
     branches: [ "main", "semi-rewrite" ]
-  pull_request:
-    branches: [ "main", "semi-rewrite" ]
   workflow_dispatch:
 permissions:
   contents: write  
@@ -21,7 +19,23 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      - name: Build Archive
+      # 安装企业证书（路径：StikJIT/Scripts/A1.1）
+      - name: Install Enterprise Certificate
+        run: |
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import StikJIT/Scripts/A1.1 -k build.keychain -P "${{ secrets.CERT_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+
+      # 安装描述文件（路径：StikJIT/Scripts/A1.2）
+      - name: Install Provisioning Profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp StikJIT/Scripts/A1.2 ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      # 编译 + 企业签名
+      - name: Build & Sign Archive
         run: |
           xcodebuild clean archive \
             -project StikDebug.xcodeproj \
@@ -30,42 +44,42 @@ jobs:
             -archivePath build/StikDebug.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=17.4
+            IPHONEOS_DEPLOYMENT_TARGET=17.4 \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}"
 
-      # 🔥 核心：TrollStore专用打包（彻底绕开teamID/签名/导出错误）
-      - name: Build IPA (No Sign, TrollStore Ready)
+      # 导出企业签名 IPA
+      - name: Export Signed IPA
         run: |
-          mkdir -p Payload
-          cp -R build/StikDebug.xcarchive/Products/Applications/*.app Payload/
-          zip -r StikDebug.ipa Payload/
-          rm -rf Payload
+          xcodebuild -exportArchive \
+            -archivePath build/StikDebug.xcarchive \
+            -exportPath . \
+            -exportOptionsPlist <(echo '{"method":"in-house","signingStyle":"manual"}')
 
+      # 上传 IPA
       - name: Upload IPA
         if: env.UPLOAD_IPA == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: StikDebug-Debug.ipa
+          name: StikDebug-Enterprise.ipa
           path: "*.ipa"
           retention-days: 90
 
-      - name: Get App Version
+      # 发布到 Nightly
+      - name: Get Version
         id: version
         run: |
           VERSION=$(sed -n 's/.*MARKETING_VERSION = \(.*\);/\1/p' StikDebug.xcodeproj/project.pbxproj | head -1 | xargs)
           echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Publish Nightly Release
+      - name: Publish Release
         if: env.UPLOAD_IPA == 'true' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: cn-1
+          tag_name: Nightly
           name: "Nightly Build - v${{ steps.version.outputs.app_version }}"
           prerelease: true
-          body: "Built from commit ${{ github.sha }}"
           files: "*.ipa"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

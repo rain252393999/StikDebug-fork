@@ -8,29 +8,6 @@
 import SwiftUI
 import MapKit
 import UIKit
-import SwiftUI
-import MapKit
-import UIKit
-
-// 👇 新增：自定义出行方式枚举（修复编译报错，核心！）
-private enum TransportType: Int, CaseIterable, Identifiable {
-    case drive, cycle, walk
-    var id: Self { self }
-    var name: String {
-        switch self {
-        case .drive: return "驾车"
-        case .cycle: return "骑行"
-        case .walk: return "步行"
-        }
-    }
-    var mkType: MKDirectionsTransportType {
-        switch self {
-        case .drive: return .automobile
-        case .cycle: return .cycling
-        case .walk: return .walking
-        }
-    }
-}
 
 private struct CoordinateSnapshot: Equatable {
     let latitude: Double
@@ -487,10 +464,9 @@ struct LocationSimulationView: View {
     @State private var showSaveBookmark = false
     @State private var newBookmarkName = ""
 
-
-    @State private var selectedTransport: TransportType = .cycle
+    @State private var selectedTransport: MKDirectionsTransportType = .cycling
     @State private var useAutoSpeed = true
-    @State private var manualSpeedKmh: Double = 3.6 // km/h 
+    @State private var manualSpeedKmh: Double = 3.6
 
     private var pairingFilePath: String {
         PairingFileStore.prepareURL().path()
@@ -665,35 +641,6 @@ struct LocationSimulationView: View {
             VStack(spacing: 0) {
                 if !searchCompleter.results.isEmpty {
                     searchResultsList
-                }
-                // 👇 新增：无报错控制面板
-                if hasRouteContext {
-                    VStack(spacing: 8) {
-                        // 出行方式切换
-                        Picker("出行方式", selection: $selectedTransport) {
-                            ForEach(TransportType.allCases) { type in
-                                Text(type.name).tag(type)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(isRouteRunning)
-                        
-                        // 速度模式
-                        HStack {
-                            Toggle("自动限速", isOn: $useAutoSpeed)
-                                .font(.caption)
-                                .disabled(isRouteRunning)
-                            
-                            if !useAutoSpeed {
-                                TextField("速度(km/h)", value: $manualSpeedKmh, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 80)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
                 }
 
                 Spacer()
@@ -1059,7 +1006,7 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType =  selectedTransport.mkType
+        request.transportType = selectedTransport
 
         routeLoadTask = Task {
             do {
@@ -1093,8 +1040,8 @@ struct LocationSimulationView: View {
                     }
                 }
 
-                let fallbackSpeed = useAutoSpeed 
-                    ? (route.expectedTravelTime > 0 ? route.distance / route.expectedTravelTime : 1.2) 
+                let fallbackSpeed = useAutoSpeed
+                    ? (route.expectedTravelTime > 0 ? route.distance / route.expectedTravelTime : 1.2)
                     : manualSpeedKmh / 3.6
 
                 await MainActor.run {
@@ -1202,6 +1149,11 @@ private struct RouteSearchSheet: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: RouteSearchField?
 
+    // 👇 新增：出行方式 + 速度配置（直接加在弹窗里）
+    @State private var selectedTransport: MKDirectionsTransportType = .cycling
+    @State private var useAutoSpeed = true
+    @State private var manualSpeedKmh: Double = 3.6
+
     init(
         initialStart: RouteSearchSelection?,
         initialEnd: RouteSearchSelection?,
@@ -1251,7 +1203,28 @@ private struct RouteSearchSheet: View {
                     selection: endSelection,
                     field: .end
                 )
-
+                 // 👇 新增：核心控件（出行方式+速度，嵌入弹窗）
+                VStack(spacing: 8) {
+                    // 出行方式选择
+                    Picker("出行方式", selection: $selectedTransport) {
+                        Text("驾车").tag(MKDirectionsTransportType.automobile)
+                        Text("骑行").tag(MKDirectionsTransportType.cycling)
+                        Text("步行").tag(MKDirectionsTransportType.walking)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    // 速度模式（km/h）
+                    HStack {
+                        Toggle("自动限速", isOn: $useAutoSpeed)
+                            .font(.caption)
+                        if !useAutoSpeed {
+                            TextField("速度(km/h)", value: $manualSpeedKmh, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .font(.caption)
+                        }
+                    }
+                }
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)

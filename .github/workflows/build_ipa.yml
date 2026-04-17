@@ -9,8 +9,6 @@ jobs:
   build_and_release:
     name: Build & Release IPA
     runs-on: macos-latest  
-    env:
-      UPLOAD_IPA: ${{ vars.UPLOAD_IPA || 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,25 +17,7 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      # 🔥 修复：钥匙串密码 + 证书密码 全部匹配你的密码【1】
-      - name: Install Enterprise Certificate
-        run: |
-          # 创建钥匙串（密码固定为1，极简无错误）
-          security create-keychain -p "1" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "1" build.keychain
-          # 导入证书：路径/文件名完全正确，密码=1
-          security import StikJIT/Scripts/A1.p12 -k build.keychain -P "1" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1" build.keychain
-
-      # 安装描述文件（无修改，完全匹配你的文件）
-      - name: Install Provisioning Profile
-        run: |
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp StikJIT/Scripts/A2.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-
-      # 编译签名
-      - name: Build & Sign Archive
+      - name: Build App
         run: |
           xcodebuild clean archive \
             -project StikDebug.xcodeproj \
@@ -46,42 +26,30 @@ jobs:
             -archivePath build/StikDebug.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            IPHONEOS_DEPLOYMENT_TARGET=17.4 \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
-            DEVELOPMENT_TEAM="2AYG7ZW6L5"
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=17.4
 
-      # 导出企业IPA
-      - name: Export Signed IPA
+      # 无签名打包，TrollStore直接安装
+      - name: Create IPA
         run: |
-          cat > ExportOptions.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>in-house</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-          </dict>
-          </plist>
-          EOF
-          
-          xcodebuild -exportArchive \
-            -archivePath build/StikDebug.xcarchive \
-            -exportPath . \
-            -exportOptionsPlist ExportOptions.plist
+          mkdir -p Payload
+          cp -R build/StikDebug.xcarchive/Products/Applications/*.app Payload/
+          zip -r StikDebug.ipa Payload/
+          rm -rf Payload
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v4
+        uses: upload-artifact@v4
         with:
-          name: StikDebug-Enterprise.ipa
+          name: StikDebug.ipa
           path: "*.ipa"
 
-      - name: Publish Release
+      - name: Publish to Nightly
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: Nightly
+          tag_name: CN-1
           name: "Nightly Build"
           files: "*.ipa"
         env:

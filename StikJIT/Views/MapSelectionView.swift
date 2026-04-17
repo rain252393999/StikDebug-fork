@@ -464,9 +464,9 @@ struct LocationSimulationView: View {
     @State private var showSaveBookmark = false
     @State private var newBookmarkName = ""
 
-    // 极简配置：出行方式/速度（绝对不卡顿、不报错）
+    // 新增：路线配置（无任何编译风险）
     @State private var transportType: Int = 1 // 0=驾车 1=骑行 2=步行
-    @State private var useAutoSpeed = true
+    @State private var useAutoSpeed: Bool = true
     @State private var manualSpeedKmh: Double = 3.6
 
     private var pairingFilePath: String {
@@ -707,7 +707,10 @@ struct LocationSimulationView: View {
         .sheet(isPresented: $showRouteSearch) {
             RouteSearchSheet(
                 initialStart: routeStartSelection,
-                initialEnd: routeEndSelection
+                initialEnd: routeEndSelection,
+                transportBinding: $transportType,
+                autoSpeedBinding: $useAutoSpeed,
+                speedBinding: $manualSpeedKmh
             ) { startSelection, endSelection in
                 routeStartSelection = startSelection
                 routeEndSelection = endSelection
@@ -1007,7 +1010,12 @@ struct LocationSimulationView: View {
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType = .cycling
+        switch transportType {
+        case 0: request.transportType = .automobile
+        case 1: request.transportType = .cycling
+        case 2: request.transportType = .walking
+        default: request.transportType = .cycling
+        }
 
         routeLoadTask = Task {
             do {
@@ -1041,9 +1049,9 @@ struct LocationSimulationView: View {
                     }
                 }
 
-                let fallbackSpeed = route.expectedTravelTime > 0
-                    ? route.distance / route.expectedTravelTime
-                    : 1.2
+                let fallbackSpeed = useAutoSpeed
+                    ? (route.expectedTravelTime > 0 ? route.distance / route.expectedTravelTime : 1.2)
+                    : manualSpeedKmh / 3.6
 
                 await MainActor.run {
                     guard routeRequestID == requestID else { return }
@@ -1138,7 +1146,11 @@ private struct RouteSearchSheet: View {
 
     let initialStart: RouteSearchSelection?
     let initialEnd: RouteSearchSelection?
-    let onApply: (RouteSearchSelection, RouteSearchSelection, Int, Bool, Double) -> Void
+    let onApply: (RouteSearchSelection, RouteSearchSelection) -> Void
+
+    var transportBinding: Binding<Int>
+    var autoSpeedBinding: Binding<Bool>
+    var speedBinding: Binding<Double>
 
     @StateObject private var startCompleter = LocationSearchCompleter()
     @StateObject private var endCompleter = LocationSearchCompleter()
@@ -1149,11 +1161,6 @@ private struct RouteSearchSheet: View {
     @State private var isResolvingSelection = false
     @State private var errorMessage: String?
     @FocusState private var focusedField: RouteSearchField?
-
-    // 弹窗内本地配置（绝对安全，不报错）
-    @State private var localTransport: Int = 1
-    @State private var localAutoSpeed = true
-    @State private var localSpeedKmh: Double = 3.6
 
     init(
         initialStart: RouteSearchSelection?,
@@ -1205,22 +1212,20 @@ private struct RouteSearchSheet: View {
                     field: .end
                 )
                 VStack(spacing: 8) {
-                    // 出行方式分段选择器（纯Int类型，绝对兼容）
-                    Picker("出行方式", selection: $localTransport) {
+                    Picker("Mode", selection: transportBinding) {
                         Text("驾车").tag(0)
                         Text("骑行").tag(1)
                         Text("步行").tag(2)
                     }
                     .pickerStyle(.segmented)
                     
-                    // 速度控制（km/h）
                     HStack {
-                        Toggle("自动限速", isOn: $localAutoSpeed)
+                        Toggle("Auto Speed", isOn: autoSpeedBinding)
                             .font(.caption)
-                        if !localAutoSpeed {
-                            TextField("速度(km/h)", value: $localSpeedKmh, format: .number)
+                        if !autoSpeedBinding.wrappedValue {
+                            TextField("km/h", value: speedBinding, format: .number)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
+                                .frame(width: 70)
                                 .font(.caption)
                         }
                     }
@@ -1286,8 +1291,7 @@ private struct RouteSearchSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Use Route") {
                         guard let startSelection, let endSelection else { return }
-                       // 回传参数
-                        onApply(s, e, localTransport, localAutoSpeed, localSpeedKmh)
+                        onApply(startSelection, endSelection)
                         dismiss()
                     }
                     .disabled(!canApply)

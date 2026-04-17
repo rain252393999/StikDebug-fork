@@ -707,9 +707,13 @@ struct LocationSimulationView: View {
             RouteSearchSheet(
                 initialStart: routeStartSelection,
                 initialEnd: routeEndSelection
-            ) { startSelection, endSelection in
-                routeStartSelection = startSelection
-                routeEndSelection = endSelection
+            ) { start, end, transport, autoSpeed, speedKMH in
+                self.routeStartSelection = start
+                self.routeEndSelection = end
+                // 接收弹窗参数
+                self.selectedTransportType = transport.mkType
+                self.useAutoSpeed = autoSpeed
+                self.manualSpeedKmh = speedKMH
                 refreshRoute()
             }
         }
@@ -1137,7 +1141,26 @@ private struct RouteSearchSheet: View {
 
     let initialStart: RouteSearchSelection?
     let initialEnd: RouteSearchSelection?
-    let onApply: (RouteSearchSelection, RouteSearchSelection) -> Void
+    let onApply: (RouteSearchSelection, RouteSearchSelection, TransportType, Bool, Double) -> Void
+   // 安全枚举（修复卡顿+编译错误，非OptionSet）
+    enum TransportType: Int, CaseIterable {
+        case drive, cycle, walk
+        var mkType: MKDirectionsTransportType {
+            switch self {
+            case .drive: return .automobile
+            case .cycle: return .cycling
+            case .walk: return .walking
+            }
+        }
+        var title: String {
+            switch self {
+            case .drive: return "驾车"
+            case .cycle: return "骑行"
+            case .walk: return "步行"
+            }
+        }
+    }
+    
 
     @StateObject private var startCompleter = LocationSearchCompleter()
     @StateObject private var endCompleter = LocationSearchCompleter()
@@ -1149,8 +1172,8 @@ private struct RouteSearchSheet: View {
     @State private var errorMessage: String?
     @FocusState private var focusedField: RouteSearchField?
 
-    // 👇 新增：出行方式 + 速度配置（直接加在弹窗里）
-    @State private var selectedTransport: MKDirectionsTransportType = .cycling
+// 新增：流畅配置（无重绘、无卡顿）
+    @State private var selectedTransport: TransportType = .cycle
     @State private var useAutoSpeed = true
     @State private var manualSpeedKmh: Double = 3.6
 
@@ -1203,20 +1226,16 @@ private struct RouteSearchSheet: View {
                     selection: endSelection,
                     field: .end
                 )
-                 // 👇 新增：核心控件（出行方式+速度，嵌入弹窗）
-                VStack(spacing: 8) {
-                    // 出行方式选择
+                 VStack(spacing: 8) {
                     Picker("出行方式", selection: $selectedTransport) {
-                        Text("驾车").tag(MKDirectionsTransportType.automobile)
-                        Text("骑行").tag(MKDirectionsTransportType.cycling)
-                        Text("步行").tag(MKDirectionsTransportType.walking)
+                        ForEach(TransportType.allCases, id: \.self) { type in
+                            Text(type.title).tag(type)
+                        }
                     }
                     .pickerStyle(.segmented)
                     
-                    // 速度模式（km/h）
                     HStack {
-                        Toggle("自动限速", isOn: $useAutoSpeed)
-                            .font(.caption)
+                        Toggle("自动限速", isOn: $useAutoSpeed).font(.caption)
                         if !useAutoSpeed {
                             TextField("速度(km/h)", value: $manualSpeedKmh, format: .number)
                                 .textFieldStyle(.roundedBorder)

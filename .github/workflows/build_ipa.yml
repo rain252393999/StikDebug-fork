@@ -19,22 +19,22 @@ jobs:
         with:
           xcode-version: '26.0.1'
 
-      # 安装企业证书（路径：StikJIT/Scripts/A1.1）
+      # 安装证书：修复文件名格式
       - name: Install Enterprise Certificate
         run: |
-          security create-keychain -p "" build.keychain
+          security create-keychain -p "123456" build.keychain
           security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import StikJIT/Scripts/A1.1 -k build.keychain -P "${{ secrets.CERT_PASSWORD }}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" build.keychain
+          security unlock-keychain -p "123456" build.keychain
+          security import StikJIT/Scripts/A1.1.p12 -k build.keychain -P "${{ secrets.CERT_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "123456" build.keychain
 
-      # 安装描述文件（路径：StikJIT/Scripts/A1.2）
+      # 安装描述文件
       - name: Install Provisioning Profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp StikJIT/Scripts/A1.2 ~/Library/MobileDevice/Provisioning\ Profiles/
+          cp StikJIT/Scripts/A1.2.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
-      # 编译 + 企业签名
+      # 编译签名
       - name: Build & Sign Archive
         run: |
           xcodebuild clean archive \
@@ -49,15 +49,27 @@ jobs:
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             DEVELOPMENT_TEAM="${{ secrets.TEAM_ID }}"
 
-      # 导出企业签名 IPA
+      # 导出企业IPA
       - name: Export Signed IPA
         run: |
+          cat > ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>in-house</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+          </dict>
+          </plist>
+          EOF
+          
           xcodebuild -exportArchive \
             -archivePath build/StikDebug.xcarchive \
             -exportPath . \
-            -exportOptionsPlist <(echo '{"method":"in-house","signingStyle":"manual"}')
+            -exportOptionsPlist ExportOptions.plist
 
-      # 上传 IPA
       - name: Upload IPA
         if: env.UPLOAD_IPA == 'true'
         uses: actions/upload-artifact@v4
@@ -66,7 +78,6 @@ jobs:
           path: "*.ipa"
           retention-days: 90
 
-      # 发布到 Nightly
       - name: Get Version
         id: version
         run: |

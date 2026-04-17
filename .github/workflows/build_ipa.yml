@@ -27,14 +27,14 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "1" build.keychain
           # 导入证书：路径/文件名完全正确，密码=1
-          security import StikJIT/Scripts/A1.1.p12 -k build.keychain -P "1" -T /usr/bin/codesign
+          security import StikJIT/Scripts/A1.p12 -k build.keychain -P "1" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "1" build.keychain
 
       # 安装描述文件（无修改，完全匹配你的文件）
       - name: Install Provisioning Profile
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp StikJIT/Scripts/A1.2.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          cp StikJIT/Scripts/A2.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
       # 编译签名
       - name: Build & Sign Archive

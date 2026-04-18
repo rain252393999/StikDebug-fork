@@ -1249,7 +1249,7 @@ private struct RouteSearchSheet: View {
                     ProgressView("Resolving location…")
                         .font(.footnote)
                 } else if !activeResults.isEmpty {
-                    ScrollView {
+                    //ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(activeResults.enumerated()), id: \.offset) { index, result in
                                 Button {
@@ -1277,7 +1277,7 @@ private struct RouteSearchSheet: View {
                                 }
                             }
                         }
-                    }
+                    //}
                     .frame(maxHeight: 260)
                 } else {
                     Text("Search for a start and destination to build the route.")

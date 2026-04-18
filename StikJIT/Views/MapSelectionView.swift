@@ -1249,8 +1249,8 @@ private struct RouteSearchSheet: View {
                     ProgressView("Resolving location…")
                         .font(.footnote)
                 } else if !activeResults.isEmpty {
-                    //ScrollView {
-                        VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
                             ForEach(Array(activeResults.enumerated()), id: \.offset) { index, result in
                                 Button {
                                     resolve(result)
@@ -1264,7 +1264,7 @@ private struct RouteSearchSheet: View {
                                             Text(result.subtitle)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
-                                               // .frame(maxWidth: .infinity, alignment: .leading)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
                                         }
                                     }
                                     .padding(.vertical, 10)
@@ -1277,9 +1277,8 @@ private struct RouteSearchSheet: View {
                                 }
                             }
                         }
-                    //}
+                    }
                     .frame(maxHeight: 260)
-                    .clipped()
                 } else {
                     Text("Search for a start and destination to build the route.")
                         .font(.footnote)

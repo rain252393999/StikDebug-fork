@@ -1264,7 +1264,7 @@ private struct RouteSearchSheet: View {
                                             Text(result.subtitle)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                               // .frame(maxWidth: .infinity, alignment: .leading)
                                         }
                                     }
                                     .padding(.vertical, 10)

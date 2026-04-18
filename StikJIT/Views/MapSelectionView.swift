@@ -1279,6 +1279,7 @@ private struct RouteSearchSheet: View {
                         }
                     //}
                     .frame(maxHeight: 260)
+                    .clipped()
                 } else {
                     Text("Search for a start and destination to build the route.")
                         .font(.footnote)

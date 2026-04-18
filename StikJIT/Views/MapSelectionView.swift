@@ -1250,7 +1250,7 @@ private struct RouteSearchSheet: View {
                         .font(.footnote)
                 } else if !activeResults.isEmpty {
                     //ScrollView {
-                        LazyVStack(spacing: 0) {
+                        VStack(spacing: 0) {
                             ForEach(Array(activeResults.enumerated()), id: \.offset) { index, result in
                                 Button {
                                     resolve(result)

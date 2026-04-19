@@ -8,6 +8,45 @@
 import SwiftUI
 import MapKit
 import UIKit
+import ObjectiveC.runtime
+// MARK: - 强制屏蔽 isSimulatedBySoftware 虚拟定位标记（iOS 26.3 专用）
+fileprivate func enableFakeLocationAntiDetection() {
+    guard let sourceInfoClass = objc_getClass("CLLocationSourceInformation") as? AnyClass else { return }
+    
+    // Hook: isSimulatedBySoftware 强制 return false
+    let originalSelector = #selector(getter: CLLocationSourceInformation.isSimulatedBySoftware)
+    let swizzleSelector = #selector(CLLocationSourceInformationHook.fake_isSimulatedBySoftware)
+    
+    if let originalMethod = class_getInstanceMethod(sourceInfoClass, originalSelector),
+       let swizzleMethod = class_getClassMethod(CLLocationSourceInformationHook.self, swizzleSelector) {
+        method_exchangeImplementations(originalMethod, swizzleMethod)
+    }
+    
+    // Hook: 伪造真实GPS来源，隐藏软件模拟痕迹
+    let clLocationClass = CLLocation.self
+    let sourceSelector = #selector(getter: CLLocation.sourceInformation)
+    let fakeSourceSelector = #selector(CLLocationHook.fake_sourceInformation)
+    
+    if let sourceMethod = class_getInstanceMethod(clLocationClass, sourceSelector),
+       let fakeSourceMethod = class_getInstanceMethod(CLLocationHook.self, fakeSourceSelector) {
+        method_exchangeImplementations(sourceMethod, fakeSourceMethod)
+    }
+}
+
+// Hook 实现类
+final class CLLocationSourceInformationHook: NSObject {
+    @objc static func fake_isSimulatedBySoftware() -> Bool {
+        // 核心：永远返回非模拟状态
+        return false
+    }
+}
+
+final class CLLocationHook: NSObject {
+    @objc func fake_sourceInformation() -> CLLocationSourceInformation? {
+        nil // 直接移除模拟来源标记，iOS 26.3 完美生效
+    }
+}
+
 
 private struct CoordinateSnapshot: Equatable {
     let latitude: Double
@@ -719,6 +758,7 @@ struct LocationSimulationView: View {
         }
         .onAppear {
             loadBookmarks()
+            enableFakeLocationAntiDetection()
         }
         .onDisappear {
             routeLoadTask?.cancel()
